@@ -1,0 +1,76 @@
+name: killit-twice-optio
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: optio-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: optio_db
+      POSTGRES_USER: optio_user
+      POSTGRES_PASSWORD: optio_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/postgres:/docker-entrypoint-initdb.d:ro
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U optio_user -d optio_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - optio-network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: optio-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+    networks:
+      - optio-network
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: optio-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: optio_user
+      RABBITMQ_DEFAULT_PASS: optio_password
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - optio-network
+
+volumes:
+  postgres_data:
+  elasticsearch_data:
+  rabbitmq_data:
+
+networks:
+  optio-network:
+    driver: bridge
