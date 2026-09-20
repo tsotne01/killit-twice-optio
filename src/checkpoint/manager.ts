@@ -77,7 +77,7 @@ export class CheckpointManager {
     await query(
       `UPDATE replication_checkpoints 
        SET last_processed_id = $1,
-           last_processed_timestamp = $2,
+           last_processed_timestamp = COALESCE((SELECT updated_at FROM customers WHERE id = $1), $2),
            records_processed = records_processed + $3,
            updated_at = NOW()
            ${statusClause}

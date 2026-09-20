@@ -36,7 +36,11 @@ export class DLQManager {
       await query(
         `INSERT INTO replication_dlq (
           pipeline_mode, record_id, target_sink, error_reason, error_details, payload, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'PENDING')`,
+        ) 
+        SELECT $1, $2, $3, $4, $5, $6, 'PENDING'
+        WHERE NOT EXISTS (
+          SELECT 1 FROM replication_dlq WHERE record_id = $2 AND status = 'PENDING'
+        )`,
         [
           item.pipeline_mode,
           item.record_id,

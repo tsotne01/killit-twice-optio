@@ -167,7 +167,7 @@ export function createApiServer(pipeline: PipelineManager): express.Application 
         const extId = `corrupt_${Date.now()}_${i}`;
         const insertRes = await query<{ id: string }>(
           `INSERT INTO customers (external_id, email, first_name, last_name, status, version, balance, attributes, created_at, updated_at)
-           VALUES ($1, $2, 'Corrupt', 'User', 'ACTIVE', 1, 999.99, json_build_object('bad_field', true), NOW(), NOW())
+           VALUES ($1, $2, 'Corrupt', 'User', 'ACTIVE', 1, 999.99, json_build_object('score', 'MALFORMED_NON_NUMERIC_STRING'), NOW(), NOW())
            RETURNING id`,
           [extId, `${extId}@corrupt.test`]
         );
