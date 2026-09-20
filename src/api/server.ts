@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import path from 'path';
 import { PipelineManager } from '../pipeline/manager';
 import { DLQManager } from '../dlq/manager';
 import { query } from '../db/postgres';
@@ -9,6 +10,10 @@ export function createApiServer(pipeline: PipelineManager): express.Application 
   const app = express();
   app.use(cors());
   app.use(express.json());
+
+  // Static UI Serving
+  const uiDistPath = path.resolve(__dirname, '../../ui/dist');
+  app.use(express.static(uiDistPath));
 
   // 1. Telemetry & Metrics (Invariant G5)
   app.get('/api/metrics', async (_req: Request, res: Response) => {
@@ -199,6 +204,19 @@ export function createApiServer(pipeline: PipelineManager): express.Application 
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // SPA Fallback
+  app.get('*', (req: Request, res: Response, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    const indexPath = path.join(uiDistPath, 'index.html');
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        res.status(200).send('Kill It Twice API Server running. UI assets not built yet.');
+      }
+    });
   });
 
   return app;
