@@ -1,7 +1,7 @@
 # Technical Specification: Kill It Twice (Data Replication Pipeline)
 
-**Document Version:** 1.0.0-draft  
-**Status:** In Review / Approved for Implementation  
+**Document Version:** 1.1.0  
+**Status:** Verified & Validated (All 5 Gates Passed)  
 **System Classification:** Fault-Tolerant Distributed Ingestion & Replication Pipeline  
 **Target Platform:** Optio Platform Team  
 
@@ -347,3 +347,29 @@ ALL GATES PASSED (5/5)
 - **Multi-tenant partitioning:** Pipeline runs for a single dedicated database tenant.
 - **Distributed Consensus (Raft/Zookeeper):** Single active pipeline worker with state locked in PostgreSQL avoids the complexity of distributed leader election while fully satisfying high availability via Docker auto-restart.
 - **Full Change Data Capture (CDC) via Postgres WAL / Debezium:** Requires elevated superuser replication slot permissions and increases operational footprint. Watermark polling with keyset tie-breaking delivers identical latency characteristics (<1s) and simpler checkpoint durability for the required scope.
+
+---
+
+## 11. Revision History & Verification Amendments (v1.0.0 → v1.1.0)
+
+During live chaos verification (`make verify`), three concrete architectural edge cases were identified and amended:
+
+### 11.1. Watermark Microsecond Precision Loss
+- **Issue in v1.0.0:** Checkpoint timestamps were passed as standard JavaScript `Date` objects. JavaScript `Date` truncates timestamps to millisecond precision (`.123Z`), whereas PostgreSQL `TIMESTAMPTZ` maintains full microsecond resolution (`.123456Z`). When multiple updates occurred in the same millisecond, the truncated timestamp caused tie-breaking queries (`updated_at = :ts AND id > :id`) to evaluate `:ts` as slightly in the past, leading to duplicate reads of recently processed items.
+- **Resolution in v1.1.0:** The checkpoint update was revised to populate `last_processed_timestamp` directly via database subquery: `COALESCE((SELECT updated_at FROM customers WHERE id = :max_batch_id), :fallback_ts)`. This guarantees 100% native microsecond alignment directly within the database engine.
+
+### 11.2. DLQ Idempotent Insertion Guard
+- **Issue in v1.0.0:** In-flight batch retries upon network hiccups could cause rejected records to be inserted multiple times into `replication_dlq`, inflating the unresolved error count.
+- **Resolution in v1.1.0:** DLQ writes were amended with an idempotency predicate:
+  ```sql
+  INSERT INTO replication_dlq (...)
+  SELECT ...
+  WHERE NOT EXISTS (
+    SELECT 1 FROM replication_dlq WHERE record_id = :id AND status = 'PENDING'
+  );
+  ```
+
+### 11.3. Realistic Cross-Engine Schema Conflict Simulation
+- **Issue in v1.0.0:** Early tests attempted to pass string values into the primary `balance` column. However, PostgreSQL enforces strong compile-time typing on `NUMERIC(12,2)`, rejecting invalid inserts at the source database level before replication.
+- **Resolution in v1.1.0:** Schema conflicts were structured around the dynamic `attributes JSONB` column. PostgreSQL accepts unstructured JSON (`{"score": "MALFORMED_STRING"}`), while Elasticsearch strictly enforces typed mappings (`attributes.score: long`). When replicated, Elasticsearch rejects only the malformed document with HTTP `400 document_parsing_exception`, perfectly demonstrating item-level DLQ isolation without compromising relational source integrity.
+
