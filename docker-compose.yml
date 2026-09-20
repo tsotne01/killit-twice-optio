@@ -66,6 +66,42 @@ services:
     networks:
       - optio-network
 
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: optio-pipeline
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: optio_db
+      POSTGRES_USER: optio_user
+      POSTGRES_PASSWORD: optio_password
+      ELASTICSEARCH_NODE: http://elasticsearch:9200
+      ELASTICSEARCH_INDEX: customers
+      RABBITMQ_URL: amqp://optio_user:optio_password@rabbitmq:5672
+      RABBITMQ_EXCHANGE: customer.events
+      RABBITMQ_QUEUE: customer.events.audit_queue
+      PIPELINE_BATCH_SIZE: 500
+      PIPELINE_POLL_INTERVAL_MS: 1000
+      API_PORT: 4000
+    ports:
+      - "4000:4000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - optio-network
+
 volumes:
   postgres_data:
   elasticsearch_data:
